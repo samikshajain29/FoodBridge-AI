@@ -1,8 +1,14 @@
 const prisma = require("../config/prisma");
 const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+
+const generateToken = (user) => {
+  return jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, {
+    expiresIn: "7d",
+  });
+};
 
 const registerUser = async ({ name, email, password, role, lat, lng }) => {
-  // 🔍 1. Check user already exists
   const existingUser = await prisma.user.findUnique({
     where: { email },
   });
@@ -11,16 +17,17 @@ const registerUser = async ({ name, email, password, role, lat, lng }) => {
     throw new Error("User already exists");
   }
 
-  // 🔐 2. Validate role
+  if (password.length < 6) {
+    throw new Error("Enter Strong password");
+  }
+
   const validRoles = ["restaurant", "ngo", "admin"];
   if (!validRoles.includes(role)) {
     throw new Error("Invalid role");
   }
 
-  // 🔒 3. Hash password
   const hashedPassword = await bcrypt.hash(password, 10);
 
-  // 🧾 4. Create user in DB
   const user = await prisma.user.create({
     data: {
       name,
@@ -32,9 +39,32 @@ const registerUser = async ({ name, email, password, role, lat, lng }) => {
     },
   });
 
-  return user;
+  const token = generateToken(user);
+
+  return { user, token };
+};
+
+const loginUser = async ({ email, password }) => {
+  const user = await prisma.user.findUnique({
+    where: { email },
+  });
+
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  const isMatch = await bcrypt.compare(password, user.password);
+
+  if (!isMatch) {
+    throw new Error("Incorrect Password");
+  }
+
+  const token = generateToken(user);
+
+  return { user, token };
 };
 
 module.exports = {
   registerUser,
+  loginUser,
 };
